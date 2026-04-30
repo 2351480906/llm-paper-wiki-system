@@ -1,0 +1,16 @@
+# === Python 忽略项 ===
+ai-engine-python/__pycache__/
+ai-engine-python/venv/
+ai-engine-python/chroma_db/        # 不要上传你的本地向量库
+ai-engine-python/my_knowledge_base/ # 不要上传你个人的 PDF 和解析记录
+*.pyc
+
+# === Java 忽略项 ===
+backend-java/target/
+backend-java/.idea/
+*.class
+
+# === Vue 忽略项 ===
+frontend-vue/node_modules/
+frontend-vue/dist/
+.DS_Store

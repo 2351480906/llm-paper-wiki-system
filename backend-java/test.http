@@ -1,0 +1,20 @@
+### 测试上传文献并提取
+POST http://localhost:8080/api/wiki/upload
+Content-Type: multipart/form-data; boundary=WebAppBoundary
+
+--WebAppBoundary
+Content-Disposition: form-data; name="file"; filename="paper.pdf"
+Content-Type: application/pdf
+
+# 下面这里填你本地 PDF 的真实路径（注意前面有个 < 符号和空格）
+< D:/test-paper.pdf
+
+--WebAppBoundary
+Content-Disposition: form-data; name="options"
+
+模型结构
+--WebAppBoundary
+Content-Disposition: form-data; name="options"
+
+创新点
+--WebAppBoundary--
