@@ -1,52 +1,97 @@
 import os
 import json
-import traceback
-from typing import Optional
-import fitz
 import re
-import uvicorn
+import shutil
+import traceback
+import pdfplumber
+from typing import List
+
 from fastapi import FastAPI, UploadFile, File, Form, BackgroundTasks
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from openai import OpenAI
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+# 导入你自己的配置文件和工具函数
+from config import WIKI_DIR, INDEX_FILE, PDF_LIBRARY_DIR, CATALOG_FILE, QWEN_API_KEY, LLM_MODEL_NAME, BASE_URL
 from utils import write_log, clean_and_split_paper, format_references
 
-# 导入我们刚刚拆分的三个模块
-from config import QWEN_API_KEY, BASE_URL, INDEX_FILE, WIKI_DIR, RAW_DIR
-from utils import write_log, clean_and_split_paper
-from database import add_documents_to_db, delete_documents_by_source, collection
+# ==========================================
+# 🚀 1. 系统初始化与跨域配置
+# ==========================================
+app = FastAPI(title="Cyber Scholar AI Engine", version="2.0.0")
 
-app = FastAPI(title="LLM Wiki Agentic Engine - Async & Modular Edition")
+# 允许 Java/Vue 跨域请求
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-client = OpenAI(api_key=QWEN_API_KEY, base_url=BASE_URL)
-text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+# 初始化阿里云通义千问客户端
+client = OpenAI(
+    api_key=QWEN_API_KEY,
+    base_url=BASE_URL
+)
 
 
-# ================== 1. 异步后台任务机制 ==================
-def background_ingest_task(filename: str, raw_text: str, options: str):
-    """后台任务：清理旧数据、结构化提取元数据、翻译摘要及选定特征"""
+# ==========================================
+# 📚 2. 核心辅助函数：账本管理
+# ==========================================
+def load_catalog() -> dict:
+    """读取本地 PDF 智能图书馆的分类账本"""
+    if os.path.exists(CATALOG_FILE):
+        with open(CATALOG_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+
+def save_to_catalog(filename: str, category: str, summary: str, file_path: str):
+    """更新账本：记录新 PDF 的位置与摘要"""
+    catalog = load_catalog()
+    catalog[filename] = {
+        "category": category,
+        "summary": summary,
+        "path": file_path
+    }
+    with open(CATALOG_FILE, "w", encoding="utf-8") as f:
+        json.dump(catalog, f, ensure_ascii=False, indent=2)
+
+
+# ==========================================
+# ⚙️ 3. 后台异步任务：智能路由与结构化提炼
+# ==========================================
+def background_ingest_task(filename: str, raw_text: str, options: str, temp_pdf_path: str):
+    """
+    大模型脏活累活后台管家：
+    1. 给论文分类并移动实体文件。
+    2. 提炼元数据、翻译摘要、提取特征公式。
+    3. 登记造册写入 Wiki。
+    """
     try:
-        write_log("ASYNC_START", f"开始高精度处理文献: {filename}")
+        write_log("ASYNC_START", f"开始高精度处理并智能路由: {filename}")
 
-        # 🌟 核心升级：覆盖模式下的“大扫除”
-        md_filename = filename.replace(".pdf", ".md")
-        delete_documents_by_source(filename)  # 1. 清理向量库中的旧块
-
-        # 2. 清理 Index 目录中的旧记录
-        if os.path.exists(INDEX_FILE):
-            with open(INDEX_FILE, "r", encoding="utf-8") as f:
-                lines = f.readlines()
-            with open(INDEX_FILE, "w", encoding="utf-8") as f:
-                for line in lines:
-                    if md_filename not in line:  # 如果不是这篇文献的记录，就写回
-                        f.write(line)
-
-        # ====== 下面是原有的处理逻辑 ======
+        # 1. 文本预清洗（分离正文与参考文献）
         main_body, references_text = clean_and_split_paper(raw_text)
 
-        chunks = text_splitter.split_text(main_body)
-        add_documents_to_db(chunks, filename)
+        # 2. 🌟 智能路由：让 LLM 判断分类
+        category_prompt = f"请根据以下论文前言，给出一个精准的中文分类标签（字数在2-6个字之间，例如：计算机视觉、脑机接口、大语言模型）。只输出分类名称，不要标点：\n{main_body[:1500]}"
+        cat_res = client.chat.completions.create(model=LLM_MODEL_NAME,
+                                                 messages=[{"role": "user", "content": category_prompt}])
+        category = cat_res.choices[0].message.content.strip().replace(" ", "_")
 
+        # 3. 📂 物理归档：将临时 PDF 移动到对应的分类文件夹下
+        category_dir = os.path.join(PDF_LIBRARY_DIR, category)
+        os.makedirs(category_dir, exist_ok=True)
+        final_pdf_path = os.path.join(category_dir, filename)
+
+        # 如果文件已存在，先删除旧文件再移动（实现覆盖逻辑）
+        if os.path.exists(final_pdf_path):
+            os.remove(final_pdf_path)
+        shutil.move(temp_pdf_path, final_pdf_path)
+
+        # 4. 📝 结构化解析：提取元数据与公式特征
         structured_prompt = f"""
 你是一个专业的科研论文解析助理。请仔细阅读提供的论文内容，并严格按照以下 Markdown 格式输出。
 
@@ -68,80 +113,197 @@ def background_ingest_task(filename: str, raw_text: str, options: str):
 正文内容（前6000字）：
 {main_body[:6000]}
 """
-        write_log("LLM_INGEST", "正在请求 LLM 进行特征提取...")
+        write_log("LLM_INGEST", f"正在请求 LLM 解析文献特征...")
         response = client.chat.completions.create(
-            model="qwen3.6-plus",
+            model="LLM_MODEL_NAME",
             messages=[{"role": "user", "content": structured_prompt}]
         )
         final_markdown = response.choices[0].message.content
 
+        # 5. 清理冗余并追加格式化好的参考文献
         final_markdown = re.sub(r'##\s*(📚\s*)?(参考文献|References).*', '', final_markdown,
                                 flags=re.IGNORECASE | re.DOTALL).strip()
         if references_text:
             cleaned_refs = format_references(references_text)
             final_markdown += "\n\n## 📚 参考文献 (References)\n\n" + cleaned_refs
 
+        # 6. 生成极简摘要，并记录到总账本
+        summary_prompt = f"请用一句话总结这段文本的主旨：\n{final_markdown[:1000]}"
+        summary = client.chat.completions.create(model=LLM_MODEL_NAME,
+                                                 messages=[{"role": "user", "content": summary_prompt}]).choices[
+            0].message.content.strip()
+
+        # 更新 JSON 账本
+        save_to_catalog(filename, category, summary, final_pdf_path)
+
+        # 7. 保存到前端可见的 Wiki 图谱目录
+        md_filename = filename.replace(".pdf", ".md")
         with open(os.path.join(WIKI_DIR, md_filename), "w", encoding="utf-8") as f:
             f.write(final_markdown)
 
-        with open(INDEX_FILE, "a", encoding="utf-8") as f:
-            f.write(f"- [{md_filename}](./{md_filename}) | 文献已完成深度解析\n")
+        # 8. 更新 index.md 总索引
+        # (先清除可能存在的旧记录，再追加新记录)
+        if os.path.exists(INDEX_FILE):
+            with open(INDEX_FILE, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+            with open(INDEX_FILE, "w", encoding="utf-8") as f:
+                for line in lines:
+                    if md_filename not in line:
+                        f.write(line)
 
-        write_log("ASYNC_SUCCESS", f"✅ {filename} 结构化词条已生成")
+        with open(INDEX_FILE, "a", encoding="utf-8") as f:
+            f.write(f"- [{md_filename}](./{md_filename}) | 分类: {category} | 摘要: {summary}\n")
+
+        write_log("ASYNC_SUCCESS", f"✅ {filename} 已归档至 [{category}] 文件夹，并生成 Wiki")
 
     except Exception as e:
-        import traceback
         traceback.print_exc()
         write_log("ASYNC_ERROR", f"❌ 任务失败: {str(e)}")
 
-# 🌟文件查重接口
+
+# ==========================================
+# 🌐 4. API 路由接口
+# ==========================================
+
 @app.get("/api/ai/check")
 async def check_file_exists(filename: str):
+    """前端防呆检测：检查文献是否已在知识库中"""
     md_filename = filename.replace(".pdf", ".md")
     filepath = os.path.join(WIKI_DIR, md_filename)
     return {"exists": os.path.exists(filepath)}
 
 
-# ================== 2. API 路由 ==================
-
-# 接口 1：文档上传 (改造为瞬间返回的异步接口)
-@app.post("/api/ai/process")
-async def process_pdf(
+@app.post("/api/ai/wiki/upload")
+async def upload_document(
         background_tasks: BackgroundTasks,
         file: UploadFile = File(...),
-        options: Optional[str] = Form("全文总结")
+        options: List[str] = Form(default=[])
 ):
+    """接收文献，保存到临时目录，并转交后台处理"""
     try:
-        write_log("UPLOAD", f"接收到文件上传请求: {file.filename}")
+        # 1. 保存为临时物理文件
+        temp_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "temp_uploads")
+        os.makedirs(temp_dir, exist_ok=True)
+        temp_pdf_path = os.path.join(temp_dir, file.filename)
 
-        # 1. 快速读取文件到内存（非常快，不会导致超时阻塞）
-        pdf_bytes = await file.read()
-        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-        raw_pdf_text = "".join([page.get_text() for page in doc])
+        with open(temp_pdf_path, "wb") as f:
+            f.write(await file.read())
 
-        # 备存原始文件到 Raw_Sources 文件夹
-        raw_filepath = os.path.join(RAW_DIR, file.filename)
-        with open(raw_filepath, "wb") as f:
-            f.write(pdf_bytes)
+        # 2. 提取文本内容供清洗使用
+        raw_text = ""
+        with pdfplumber.open(temp_pdf_path) as pdf:
+            for page in pdf.pages:
+                extracted = page.extract_text()
+                if extracted:
+                    raw_text += extracted + "\n"
 
-        # 2. 🌟 核心魔法：将耗时十几秒到几分钟的处理任务扔进后台队列
-        background_tasks.add_task(background_ingest_task, file.filename, raw_pdf_text, options)
+        # 3. 推送至后台管家
+        options_str = ", ".join(options)
+        background_tasks.add_task(background_ingest_task, file.filename, raw_text, options_str, temp_pdf_path)
 
-        # 3. 立即响应前端
-        return {
-            "status": "success",
-            "markdown": f"⏳ **任务已受理并丢入后台队列！**\n\n您的文献 `{file.filename}` 正在后台静默进行【智能切分】与【向量入库】。\n\n此时您可以无缝切换去右侧聊天框提问，后台完成后会自动更新至 Wiki 图谱！"
-        }
-
+        return {"status": "success", "message": "文献已接收，后台正在进行智能分类与特征提取..."}
     except Exception as e:
-        traceback.print_exc()
-        return {"status": "error", "message": f"文件接收失败: {str(e)}"}
+        return {"status": "error", "message": f"处理失败: {str(e)}"}
 
-
-# ----------------- Agentic RAG 对话模块 -----------------
 
 class ChatRequest(BaseModel):
     question: str
+
+
+@app.post("/api/ai/wiki/chat")
+async def chat_with_agent(req: ChatRequest):
+    """🌟 两阶段 Agentic RAG：先查账本目录，再读底层 PDF"""
+    question = req.question
+    catalog = load_catalog()
+
+    try:
+        # 🌟 阶段 1：全局目录感知
+        catalog_str = json.dumps(catalog, ensure_ascii=False, indent=2)
+        stage1_prompt = f"""
+        用户提出了一个问题：“{question}”
+        以下是我管理的所有物理 PDF 仓库目录和摘要信息：
+        {catalog_str}
+
+        请判断：
+        1. 如果你可以通过一般常识直接回答，请直接回答。
+        2. 如果必须查阅上述某篇特定文献才能详细解答，请回复严格格式：“NEED_PDF: [文件名.pdf]”，不要加任何其他废话。
+        """
+        res1 = client.chat.completions.create(
+            model=LLM_MODEL_NAME,
+            messages=[{"role": "user", "content": stage1_prompt}]
+        ).choices[0].message.content.strip()
+
+        # 🌟 阶段 2：动态回溯底层 PDF 长上下文
+        if "NEED_PDF:" in res1:
+            target_file = res1.split("NEED_PDF:")[1].strip()
+
+            # 在账本中寻找对应的实体文件
+            matched_file = None
+            for fn in catalog.keys():
+                if fn in target_file:
+                    matched_file = fn
+                    break
+
+            if matched_file:
+                pdf_path = catalog[matched_file]["path"]
+                write_log("AGENT_RAG", f"触发深度阅读，正在翻阅物理 PDF: {pdf_path}")
+
+                # 读取原文件前 5 页进行精读
+                pdf_content = ""
+                try:
+                    with pdfplumber.open(pdf_path) as pdf:
+                        for i in range(min(5, len(pdf.pages))):
+                            text = pdf.pages[i].extract_text()
+                            if text: pdf_content += text + "\n"
+                except Exception as e:
+                    pdf_content = f"无法读取PDF内容: {str(e)}"
+
+                stage2_prompt = f"""
+                用户的问题是：“{question}”。
+                你正在阅读原始论文 {matched_file} 的前几页内容：
+                {pdf_content}
+
+                请结合这些原文内容，给出详尽、专业的解答。
+                ⚠️ 在回答的最后新起一行，必须加上这个标记：[底层原始PDF]
+                """
+                final_answer = client.chat.completions.create(
+                    model=LLM_MODEL_NAME,
+                    messages=[{"role": "user", "content": stage2_prompt}]
+                ).choices[0].message.content
+                return final_answer
+            else:
+                return "抱歉，我翻找了本地的物理仓库目录，但没有找到确切对应的 PDF 文件来回答这个问题。"
+        else:
+            # 常识或无需查阅文件即可回答
+            return res1
+
+    except Exception as e:
+        return f"❌ 智能体运行出错: {str(e)}"
+
+
+@app.get("/api/ai/wiki/list")
+async def get_wiki_list():
+    """获取所有已生成的 Wiki 列表"""
+    try:
+        if not os.path.exists(WIKI_DIR):
+            return {"status": "success", "files": []}
+        files = [f for f in os.listdir(WIKI_DIR) if f.endswith(".md") and f != "index.md"]
+        return {"status": "success", "files": files}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@app.get("/api/ai/wiki/content")
+async def get_wiki_content(filename: str):
+    """读取指定 Wiki 文献的内容"""
+    try:
+        filepath = os.path.join(WIKI_DIR, filename)
+        if os.path.exists(filepath):
+            with open(filepath, "r", encoding="utf-8") as f:
+                return {"status": "success", "content": f.read()}
+        return {"status": "error", "message": "知识库图谱中暂无此文件"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 
 class SaveWikiRequest(BaseModel):
@@ -149,160 +311,28 @@ class SaveWikiRequest(BaseModel):
     content: str
 
 
-tools = [
-    {
-        "type": "function",
-        "function": {
-            "name": "read_wiki_index",
-            "description": "读取本地 Wiki 库的总目录，了解目前拥有哪些文献和摘要信息。",
-            "parameters": {"type": "object", "properties": {}}
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "read_wiki_page",
-            "description": "读取某一篇具体的 Wiki markdown 页面内容。",
-            "parameters": {
-                "type": "object",
-                "properties": {"filename": {"type": "string", "description": "要读取的 .md 文件名（从 index 中获取）"}},
-                "required": ["filename"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "search_vector_db",
-            "description": "在底层的海量原始论文向量数据库中进行深度检索。",
-            "parameters": {
-                "type": "object",
-                "properties": {"query": {"type": "string", "description": "用于检索的精炼关键词"}},
-                "required": ["query"]
-            }
-        }
-    }
-]
-
-
-# 接口 2：多路由智能问答
-@app.post("/api/ai/chat")
-async def agent_chat(request: ChatRequest):
+@app.post("/api/ai/wiki/save")
+async def save_to_wiki(req: SaveWikiRequest):
+    """将智能问答生成的优质内容手动固化为 Wiki"""
     try:
-        write_log("QUERY", f"用户提问: {request.question}")
-
-        system_prompt = """
-        你是一个拥有‘图书管理员’意识的高级科研管家。
-        收到问题后，你的工作流程必须是：
-        1. 优先调用 read_wiki_index 查看目录结构。
-        2. 如果目录里有相关的页面，调用 read_wiki_page 读取具体内容。
-        3. 如果 Wiki 中没有现成答案，调用 search_vector_db 在底层数据库检索。
-        回答的最后，必须标明来源：[Wiki库] 或 [底层向量库]。
-        """
-
-        messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": request.question}]
-
-        for _ in range(3):
-            response = client.chat.completions.create(model="qwen3.6-plus", messages=messages, tools=tools)
-            msg = response.choices[0].message
-
-            # Pydantic 兼容性安全补丁
-            msg_dict = msg.model_dump(exclude_none=True)
-            if "content" not in msg_dict or msg_dict["content"] is None:
-                msg_dict["content"] = ""
-            messages.append(msg_dict)
-
-            if not msg.tool_calls:
-                write_log("ANSWER", "思考完成，直接返回结果。")
-                return {"answer": msg.content or "我查到了资料，但不知道怎么表达..."}
-
-            tool_call = msg.tool_calls[0]
-            tool_name = tool_call.function.name
-            args = json.loads(tool_call.function.arguments)
-
-            write_log("TOOL_CALL", f"大模型决定调用工具: {tool_name}, 参数: {args}")
-            tool_result = ""
-
-            try:
-                if tool_name == "read_wiki_index":
-                    with open(INDEX_FILE, "r", encoding="utf-8") as f:
-                        tool_result = f.read()
-
-                elif tool_name == "read_wiki_page":
-                    filename = args.get("filename", "")
-                    filepath = os.path.join(WIKI_DIR, filename)
-                    if filename and os.path.exists(filepath):
-                        with open(filepath, "r", encoding="utf-8") as f:
-                            tool_result = f.read()
-                    else:
-                        tool_result = "该页面不存在。"
-
-                elif tool_name == "search_vector_db":
-                    query = args.get("query", "")
-                    res = collection.query(query_texts=[query], n_results=3)
-                    if res and "documents" in res and res["documents"] and res["documents"][0]:
-                        tool_result = "\n---\n".join(res["documents"][0])
-                    else:
-                        tool_result = "未检索到相关内容。"
-            except Exception as e:
-                tool_result = f"工具执行报错: {str(e)}"
-                write_log("TOOL_ERROR", f"执行 {tool_name} 失败: {str(e)}")
-
-            messages.append({
-                "role": "tool",
-                "tool_call_id": tool_call.id,
-                "name": tool_name,
-                "content": str(tool_result)
-            })
-
-        return {"answer": "思考超时或进入死循环，请简化您的问题。"}
-
-    except Exception as e:
-        traceback.print_exc()
-        write_log("CHAT_ERROR", f"聊天接口发生严重异常: {str(e)}")
-        return {"answer": f"❌ Python 引擎内部错误: {str(e)}"}
-
-
-# 接口 3：知识库反哺
-@app.post("/api/ai/save_to_wiki")
-async def save_to_wiki(request: SaveWikiRequest):
-    try:
-        filename = f"新发现_{request.topic}.md"
+        # 清除特殊标记
+        clean_content = req.content.replace("[底层原始PDF]", "").strip()
+        filename = f"{req.topic}.md"
         filepath = os.path.join(WIKI_DIR, filename)
 
         with open(filepath, "w", encoding="utf-8") as f:
-            f.write(f"# {request.topic}\n\n{request.content}\n")
+            f.write(f"## 📖 AI 智能问答沉淀\n\n{clean_content}")
 
         with open(INDEX_FILE, "a", encoding="utf-8") as f:
-            f.write(f"- [{filename}](./{filename}) | **来源**: 用户反哺 | **主题**: {request.topic}\n")
+            f.write(f"- [{filename}](./{filename}) | 📌 由 Agent 智能问答动态生成沉淀\n")
 
-        write_log("FEEDBACK", f"用户将新知识反哺至 Wiki: {filename}")
-        return {"status": "success", "message": f"成功保存至 Wiki 词条：{filename}"}
-    except Exception as e:
-        traceback.print_exc()
-        return {"status": "error", "message": str(e)}
-
-# 接口 4：获取已处理文献目录
-@app.get("/api/ai/wiki/list")
-async def get_wiki_list():
-    try:
-        # 读取 Wiki 文件夹下所有的 .md 文件 (排除 index 和 log)
-        files = [f for f in os.listdir(WIKI_DIR) if f.endswith('.md') and not f.startswith(('index', 'log', '新发现'))]
-        return {"status": "success", "files": files}
+        return {"status": "success", "message": "🎉 已成功沉淀至知识库图谱！"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-# 接口 5：读取具体文献的 Wiki 内容
-@app.get("/api/ai/wiki/content")
-async def get_wiki_content(filename: str):
-    try:
-        filepath = os.path.join(WIKI_DIR, filename)
-        if os.path.exists(filepath):
-            with open(filepath, "r", encoding="utf-8") as f:
-                return {"status": "success", "content": f.read()}
-        return {"status": "error", "message": "文件不存在"}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
 
+# 启动命令 (用于本地测试调试)
 if __name__ == "__main__":
+    import uvicorn
+
     uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)

@@ -9,7 +9,7 @@
             <div class="message-bubble">
               <p style="white-space: pre-wrap; margin: 0; line-height: 1.6;">{{ msg.content }}</p>
             </div>
-            <div class="action-row" v-if="msg.role === 'assistant' && msg.content.includes('[底层向量库]')">
+            <div class="action-row" v-if="msg.role === 'assistant' && msg.content.includes('[底层原始PDF]')">
               <el-button type="warning" size="small" :icon="Collection" plain @click="promptSaveToWiki(msg.content)">
                 💾 发现新知识！提炼为 Wiki 词条
               </el-button>

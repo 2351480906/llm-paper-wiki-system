@@ -1,8 +1,8 @@
 import os
 
-QWEN_API_KEY = "your_api_key_here" # ⚠️ 替换为你的 Key
+QWEN_API_KEY = "sk-21b28f745dee492ab5c8a4de46d9413b" # ⚠️ 替换为你的 Key
 BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-
+LLM_MODEL_NAME = "qwen3.6-plus"
 # 文件目录架构
 BASE_DIR = "./my_knowledge_base"
 WIKI_DIR = os.path.join(BASE_DIR, "Wiki")
@@ -12,6 +12,11 @@ SCHEMA_DIR = os.path.join(BASE_DIR, "Schema")
 INDEX_FILE = os.path.join(WIKI_DIR, "index.md")
 LOG_FILE = os.path.join(WIKI_DIR, "log.md")
 SCHEMA_FILE = os.path.join(SCHEMA_DIR, "rule.yaml")
+
+# 🌟 智能路由的实体 PDF 存放库
+PDF_LIBRARY_DIR = os.path.join(BASE_DIR, "my_knowledge_base", "Categorized_PDFs")
+# 🌟 用于记录每篇文献放在哪个分类下的全库总账本
+CATALOG_FILE = os.path.join(BASE_DIR, "my_knowledge_base", "pdf_catalog.json")
 
 # 启动时自动初始化目录结构
 for directory in [WIKI_DIR, RAW_DIR, SCHEMA_DIR]:
