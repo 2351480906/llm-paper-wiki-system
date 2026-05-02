@@ -1,153 +1,186 @@
 <template>
-  <div class="app-container">
-    <el-container class="layout-container">
+  <el-container class="app-container" :class="{ 'is-dark': isDarkMode }">
 
-      <el-aside width="220px" class="sidebar">
-        <div class="logo">🧠 赛博大脑中枢</div>
-        <el-menu
-            :default-active="activeMenu"
-            class="el-menu-vertical"
-            background-color="transparent"
-            :text-color="isDarkMode ? '#fff' : '#333'"
-            active-text-color="#409eff"
-            @select="handleMenuSelect"
-        >
-          <el-menu-item index="upload">
-            <el-icon><Upload /></el-icon>
-            <span>文献摄入工作台</span>
-          </el-menu-item>
-          <el-menu-item index="wiki">
-            <el-icon><Reading /></el-icon>
-            <span>知识库图谱查阅</span>
-          </el-menu-item>
-          <el-menu-item index="chat">
-            <el-icon><ChatDotRound /></el-icon>
-            <span>Agent 智能问答</span>
-          </el-menu-item>
-        </el-menu>
+    <!-- 🌟 左侧导航侧边栏 -->
+    <el-aside width="240px" class="sidebar">
+      <div class="logo-header">
+        <span class="logo-icon">🧠</span>
+        <span class="logo-text">Cyber Scholar</span>
+      </div>
 
-        <div class="theme-switch">
-          <el-switch
-              v-model="isDarkMode"
-              inline-prompt
-              active-text="🌙 暗黑"
-              inactive-text="☀️ 白天"
-              @change="toggleTheme"
-          />
-        </div>
-      </el-aside>
+      <el-menu
+          :default-active="activeMenu"
+          class="main-menu"
+          :background-color="isDarkMode ? '#1e1e2d' : '#f5f7fa'"
+          :text-color="isDarkMode ? '#a1a5b7' : '#333'"
+          active-text-color="#409EFF"
+          @select="handleSelect"
+      >
+        <el-menu-item index="upload">
+          <el-icon><Upload /></el-icon>
+          <span>文献解析工作台</span>
+        </el-menu-item>
 
+        <el-menu-item index="wiki">
+          <el-icon><Document /></el-icon>
+          <span>知识库图谱查阅</span>
+        </el-menu-item>
+
+        <el-menu-item index="chat">
+          <el-icon><ChatDotRound /></el-icon>
+          <span>Agent 智能问答</span>
+        </el-menu-item>
+
+        <el-menu-item index="settings">
+          <el-icon><Setting /></el-icon>
+          <span>系统引擎设置</span>
+        </el-menu-item>
+      </el-menu>
+
+      <!-- 主题切换按钮放在底部 -->
+      <div class="theme-switch-wrapper">
+        <el-switch
+            v-model="isDarkMode"
+            inline-prompt
+            :active-icon="Moon"
+            :inactive-icon="Sunny"
+            style="--el-switch-on-color: #4a4a4a; --el-switch-off-color: #dcdfe6"
+            @change="toggleTheme"
+        />
+        <span class="theme-label">{{ isDarkMode ? '暗黑模式' : '明亮模式' }}</span>
+      </div>
+    </el-aside>
+
+    <!-- 🌟 右侧主内容区 -->
+    <el-container>
       <el-main class="main-content">
-        <UploadView v-if="activeMenu === 'upload'" />
-        <WikiView v-if="activeMenu === 'wiki'" ref="wikiViewRef" />
-        <ChatView v-if="activeMenu === 'chat'" />
+        <!-- 🌟 核心修改：使用 KeepAlive 实现页面缓存保活 -->
+        <KeepAlive>
+          <component :is="currentComponent" />
+        </KeepAlive>
       </el-main>
-
     </el-container>
-  </div>
+
+  </el-container>
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick } from 'vue'
-import { Upload, Reading, ChatDotRound } from '@element-plus/icons-vue'
+import { ref, computed, onMounted } from 'vue'
+import { Upload, Document, ChatDotRound, Setting, Moon, Sunny } from '@element-plus/icons-vue'
+
+// 引入你的四个核心视图组件
 import UploadView from './components/UploadView.vue'
 import WikiView from './components/WikiView.vue'
 import ChatView from './components/ChatView.vue'
+import SettingsView from './components/SettingsView.vue'
 
+// 状态管理
 const activeMenu = ref('upload')
-const wikiViewRef = ref(null)
-
-// 🌟 主题切换逻辑
 const isDarkMode = ref(false)
 
+// 🌟 核心修改：建立一个“菜单标识”到“具体组件”的映射表
+const viewMap = {
+  upload: UploadView,
+  wiki: WikiView,
+  chat: ChatView,
+  settings: SettingsView
+}
+
+// 🌟 核心修改：计算出当前应该显示的组件
+const currentComponent = computed(() => viewMap[activeMenu.value])
+
+// 菜单切换逻辑
+const handleSelect = (index) => {
+  activeMenu.value = index
+}
+
+// 主题切换逻辑
 const toggleTheme = (val) => {
-  const root = document.documentElement
   if (val) {
-    root.setAttribute('data-theme', 'dark')
-    root.classList.add('dark') // 兼容 Element Plus 自带的暗黑模式
+    document.documentElement.classList.add('dark')
   } else {
-    root.setAttribute('data-theme', 'light')
-    root.classList.remove('dark')
+    document.documentElement.classList.remove('dark')
   }
 }
 
+// 页面加载时初始化主题
 onMounted(() => {
-  // 页面加载时初始化主题
   toggleTheme(isDarkMode.value)
 })
-
-const handleMenuSelect = async (index) => {
-  activeMenu.value = index
-  if (index === 'wiki') {
-    await nextTick()
-    if (wikiViewRef.value) wikiViewRef.value.loadWikiList()
-  }
-}
 </script>
 
 <style>
-/* 🌟 全局 CSS 变量定义：白天模式 vs 黑夜模式 */
-:root[data-theme="light"] {
-  --bg-app: #f0f2f5;
-  --bg-panel: #ffffff;
-  --bg-card: #fafafa;
-  --bg-hover: #f5f7fa;
+/* 保持你原来的全局 CSS 变量和样式不变 */
+:root {
+  --bg-main: #ffffff;
+  --bg-panel: #fcfcfc;
+  --bg-card: #ffffff;
+  --bg-hover: #f0f2f5;
   --text-main: #303133;
   --text-muted: #909399;
-  border-color: #dcdfe6;
   --border-line: #e4e7ed;
-  --chat-ai-bg: #ffffff;
-  --chat-ai-border: #dcdfe6;
 }
 
-:root[data-theme="dark"] {
-  --bg-app: #121212;
-  --bg-panel: #1e1e1e;
-  --bg-card: #252525;
-  --bg-hover: #2a2a2a;
-  --text-main: #e0e0e0;
-  --text-muted: #888888;
-  --border-line: #333333;
-  --chat-ai-bg: #333333;
-  --chat-ai-border: #555555;
+:root.dark {
+  --bg-main: #151521;
+  --bg-panel: #1e1e2d;
+  --bg-card: #1b1b29;
+  --bg-hover: #2b2b40;
+  --text-main: #e1e3e8;
+  --text-muted: #a1a5b7;
+  --border-line: #2b2b40;
 }
 
-body { margin: 0; }
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', '微软雅黑', Arial, sans-serif;
+  background-color: var(--bg-main);
+  color: var(--text-main);
+  transition: background-color 0.3s, color 0.3s;
+}
 
 .app-container {
   height: 100vh;
-  background-color: var(--bg-app);
-  color: var(--text-main);
-  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-  transition: background-color 0.3s;
+  width: 100vw;
+  overflow: hidden;
 }
-
-.layout-container { height: 100%; }
 
 .sidebar {
-  background-color: var(--bg-panel);
-  border-right: 1px solid var(--border-line);
   display: flex;
   flex-direction: column;
+  background-color: var(--bg-panel) !important;
+  border-right: 1px solid var(--border-line);
   transition: background-color 0.3s;
 }
 
-.logo {
-  padding: 20px;
-  font-size: 20px;
+.logo-header {
+  height: 60px;
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  font-size: 18px;
   font-weight: bold;
   color: var(--text-main);
-  text-align: center;
   border-bottom: 1px solid var(--border-line);
 }
+.logo-icon { margin-right: 8px; font-size: 22px; }
 
-.el-menu { border-right: none; flex: 1; }
+.main-menu { flex: 1; border-right: none; }
 
-.theme-switch {
+.theme-switch-wrapper {
   padding: 20px;
-  text-align: center;
+  display: flex;
+  align-items: center;
   border-top: 1px solid var(--border-line);
 }
+.theme-label { margin-left: 10px; font-size: 13px; color: var(--text-muted); }
 
-.main-content { padding: 30px; overflow-y: hidden; }
+.main-content {
+  background-color: var(--bg-main);
+  padding: 20px;
+  height: 100%;
+  box-sizing: border-box;
+  overflow-y: hidden;
+}
 </style>

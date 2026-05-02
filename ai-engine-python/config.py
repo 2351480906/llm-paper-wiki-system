@@ -1,35 +1,56 @@
 import os
+import json
+import shutil
 
-QWEN_API_KEY = "sk-21b28f745dee492ab5c8a4de46d9413b" # ⚠️ 替换为你的 Key
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+SETTINGS_FILE = os.path.join(BASE_DIR, "settings.json")
+QWEN_API_KEY = "sk-21b28f745dee492ab5c8a4de46d9413b" # ⚠️ 记得填回你的 API Key
 BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-LLM_MODEL_NAME = "qwen3.6-plus"
-# 文件目录架构
-BASE_DIR = "./my_knowledge_base"
-WIKI_DIR = os.path.join(BASE_DIR, "Wiki")
-RAW_DIR = os.path.join(BASE_DIR, "Raw_Sources")
-SCHEMA_DIR = os.path.join(BASE_DIR, "Schema")
 
+# 1. 设置默认配置
+DEFAULT_CONFIG = {
+    "base_path": os.path.join(BASE_DIR, "my_knowledge_base"),
+    "llm_model": "qwen3.6-plus"
+}
+
+# 2. 从外部 JSON 加载用户自定义配置
+if os.path.exists(SETTINGS_FILE):
+    try:
+        with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+            user_config = json.load(f)
+    except:
+        user_config = DEFAULT_CONFIG
+else:
+    user_config = DEFAULT_CONFIG
+
+# 3. 导出全局变量
+KNOWLEDGE_BASE_DIR = user_config.get("base_path", DEFAULT_CONFIG["base_path"])
+LLM_MODEL_NAME = user_config.get("llm_model", DEFAULT_CONFIG["llm_model"])
+
+# 4. 动态生成下级目录
+WIKI_DIR = os.path.join(KNOWLEDGE_BASE_DIR, "Wiki")
+
+# 🌟 核心架构升级：原始资源池 (Raw_Sources)
+RAW_SOURCES_DIR = os.path.join(KNOWLEDGE_BASE_DIR, "Raw_Sources")
+PDF_LIBRARY_DIR = os.path.join(RAW_SOURCES_DIR, "PDF")
+# 未来你如果加了 Word，只需在这里加一行 WORD_LIBRARY_DIR = os.path.join(RAW_SOURCES_DIR, "Word") 即可
+
+CATALOG_FILE = os.path.join(KNOWLEDGE_BASE_DIR, "pdf_catalog.json")
 INDEX_FILE = os.path.join(WIKI_DIR, "index.md")
-LOG_FILE = os.path.join(WIKI_DIR, "log.md")
-SCHEMA_FILE = os.path.join(SCHEMA_DIR, "rule.yaml")
+LOG_FILE = os.path.join(KNOWLEDGE_BASE_DIR, "agent.log")
 
-# 🌟 智能路由的实体 PDF 存放库
-PDF_LIBRARY_DIR = os.path.join(BASE_DIR, "my_knowledge_base", "Categorized_PDFs")
-# 🌟 用于记录每篇文献放在哪个分类下的全库总账本
-CATALOG_FILE = os.path.join(BASE_DIR, "my_knowledge_base", "pdf_catalog.json")
+# ==========================================
+# 🔄 自动迁移逻辑 (无损兼容老版本)
+# ==========================================
+OLD_PDF_DIR = os.path.join(KNOWLEDGE_BASE_DIR, "Categorized_PDFs")
+if os.path.exists(OLD_PDF_DIR) and not os.path.exists(PDF_LIBRARY_DIR):
+    # 确保父级 Raw_Sources 文件夹存在
+    os.makedirs(RAW_SOURCES_DIR, exist_ok=True)
+    # 将原来的 Categorized_PDFs 整个移动并重命名为 PDF
+    shutil.move(OLD_PDF_DIR, PDF_LIBRARY_DIR)
+    print(f"📦 [系统管家] 检测到历史数据，已自动无损迁移至: {PDF_LIBRARY_DIR}")
 
-# 启动时自动初始化目录结构
-for directory in [WIKI_DIR, RAW_DIR, SCHEMA_DIR]:
-    os.makedirs(directory, exist_ok=True)
-
-if not os.path.exists(INDEX_FILE):
-    with open(INDEX_FILE, 'w', encoding='utf-8') as f:
-        f.write("# 📚 本地知识库总目录 (Wiki Index)\n\n")
-
-if not os.path.exists(LOG_FILE):
-    with open(LOG_FILE, 'w', encoding='utf-8') as f:
-        f.write("# ⏱️ 知识库操作审计日志\n\n")
-
-if not os.path.exists(SCHEMA_FILE):
-    with open(SCHEMA_FILE, 'w', encoding='utf-8') as f:
-        f.write("wiki_rules:\n  - 所有新建页面必须包含一句话摘要。\n  - 专业术语请加粗。\n  - 必须标明知识来源。\n")
+# 5. 确保所有目录存在
+os.makedirs(WIKI_DIR, exist_ok=True)
+os.makedirs(RAW_SOURCES_DIR, exist_ok=True)
+os.makedirs(PDF_LIBRARY_DIR, exist_ok=True)

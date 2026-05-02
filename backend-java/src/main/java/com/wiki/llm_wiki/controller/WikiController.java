@@ -7,8 +7,8 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate; // 🌟 修复: 引入 RestTemplate
 import org.springframework.web.multipart.MultipartFile;
 
-import java.util.List;
 import java.util.Map;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/wiki")
@@ -33,12 +33,14 @@ public class WikiController {
     }
 
     @PostMapping("/chat")
-    public String chat(@RequestBody Map<String, String> request) {
-        String question = request.get("question");
-        if (question == null || question.trim().isEmpty()) {
-            return "问题不能为空哦！";
+    public ResponseEntity<String> chatWithAgent(@RequestBody Map<String, Object> request) {
+        try {
+            // 注意检查这里的路径是不是我们之前修好的 /api/ai/chat
+            String url = "http://127.0.0.1:8000/api/ai/chat";
+            return restTemplate.postForEntity(url, request, String.class);
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body("{\"content\":\"❌ Java层转发异常\"}");
         }
-        return wikiService.chatWithAgent(question);
     }
 
     @PostMapping("/save")
@@ -49,6 +51,22 @@ public class WikiController {
             return "❌ 标题和内容不能为空";
         }
         return wikiService.saveToWiki(topic, content);
+    }
+
+    @PostMapping("/api/wiki/merge") // 给 Vue 前端调用的地址
+    public ResponseEntity<String> mergeToWiki(@RequestBody Map<String, String> payload) {
+        String filename = payload.get("filename");
+        String question = payload.get("question");
+        String answer = payload.get("answer");
+
+        // 基础参数校验
+        if (filename == null || question == null || answer == null) {
+            return ResponseEntity.badRequest().body("❌ 缺少必要参数(filename, question, answer)");
+        }
+
+        // 调用 Service 转发给 Python
+        String result = wikiService.mergeToWiki(filename, question, answer);
+        return ResponseEntity.ok(result);
     }
 
     // ==========================================
@@ -69,7 +87,7 @@ public class WikiController {
     public ResponseEntity<String> getWikiList() {
         System.out.println("🔍 [Java] 正在请求 Python 获取 Wiki 列表...");
         try {
-            String url = "http://127.0.0.1:8000/api/ai/wiki/list";
+            String url = "http://127.0.0.1:8000/api/ai/list";
             // 现在 restTemplate 和 ResponseEntity 都可以正常识别了
             return restTemplate.getForEntity(url, String.class);
         } catch (Exception e) {
@@ -83,10 +101,32 @@ public class WikiController {
     public ResponseEntity<String> getWikiContent(@RequestParam("filename") String filename) {
         System.out.println("📖 [Java] 正在请求 Python 读取内容: " + filename);
         try {
-            String url = "http://127.0.0.1:8000/api/ai/wiki/content?filename=" + filename;
+            String url = "http://127.0.0.1:8000/api/ai/content?filename=" + filename;
             return restTemplate.getForEntity(url, String.class);
         } catch (Exception e) {
             return ResponseEntity.status(500).body("{\"status\":\"error\",\"message\":\"无法读取文献内容\"}");
+        }
+    }
+    // ==========================================
+    // 系统设置相关接口
+    // ==========================================
+    @GetMapping("/settings")
+    public ResponseEntity<String> getSettings() {
+        try {
+            String url = "http://127.0.0.1:8000/api/ai/settings";
+            return restTemplate.getForEntity(url, String.class);
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body("{\"status\":\"error\",\"message\":\"无法连接Python引擎\"}");
+        }
+    }
+
+    @PostMapping("/settings")
+    public ResponseEntity<String> saveSettings(@RequestBody Map<String, String> request) {
+        try {
+            String url = "http://127.0.0.1:8000/api/ai/settings";
+            return restTemplate.postForEntity(url, request, String.class);
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body("{\"status\":\"error\",\"message\":\"保存失败\"}");
         }
     }
 }

@@ -1,225 +1,83 @@
-```markdown
-## 科研内容提取（基于 STA-Net 论文）
+## 📋 元数据 (Metadata)
+- **文献题目**：STA-Net: Spatial–temporal alignment network for hybrid EEG-fNIRS decoding
+- **文献作者**：Mutian Liu, Banghua Yang*, Lin Meng, Yonghuai Zhang, Shouwei Gao, Peng Zan, Xinxing Xia
+- **发表时间**：2025年（Online available: 15 February 2025）
+- **发表地址/期刊会议**：Information Fusion, Volume 119, 2025, 103023 (Elsevier)
+- **开源代码地址**：https://github.com/MutianLiu-SHU/STA-Net
 
-### 🔧 算法结构  
-- **整体架构**：端到端的 **Spatial–Temporal Alignment Network (STA-Net)**，专为 EEG-fNIRS 双模态信号设计。  
-- **核心子模块**：  
-  - **fNIRS-guided Spatial Alignment (FGSA) 层**：以 fNIRS 特征生成空间注意力图，识别敏感脑区，并对 EEG 通道进行加权空间对齐（即：用 fNIRS 指导 EEG 的空间权重分配）。  
-  - **EEG-guided Temporal Alignment (EGTA) 层**：基于 **cross-attention 机制**，以 EEG 为 query、fNIRS 为 key/value，生成时序注意力图，动态重构 fNIRS 信号，实现与 EEG 的毫秒级时间对齐（补偿 fNIRS 固有的 ~5–8 s 血流动力学延迟）。  
-- **融合与分类**：对齐后的 EEG-fNIRS 特征经特征拼接/融合后输入分类器（文中未显式说明分类器类型，但实验采用端到端训练，推断为集成于网络末端的全连接层+Softmax）。  
-- **实现方式**：完全可微分、端到端联合优化；开源代码已发布（GitHub）。
+## 📖 论文摘要 (Abstract 中文翻译)
+混合脑机接口（BCI）因其能够突破单模态BCI限制的能力而受到广泛关注。开发创新的融合方法以充分利用脑电图（EEG）的高时间分辨率和功能性近红外光谱（fNIRS）的高空间分辨率至关重要。本文提出了一种端到端的空间-时间对齐网络（STA-Net），旨在实现EEG与fNIRS之间精确的时空对齐。STA-Net包含两个子层：fNIRS引导的空间对齐（FGSA）层和EEG引导的时间对齐（EGTA）层。FGSA层从fNIRS计算空间注意力图以识别敏感脑区，并通过加权EEG通道实现EEG与fNIRS的空间对齐。EGTA层基于交叉注意力机制生成时间注意力图，从而生成与EEG在时间上对齐的fNIRS信号，解决了由fNIRS固有延迟引起的时间不匹配问题。最后，将时空对齐后的EEG-fNIRS信号进行融合，用于对运动想象（MI）、心算（MA）和词语生成（WG）三种心理任务进行分类。在受试者特定评估中，STA-Net取得了显著的性能，MI任务的平均准确率为69.65%，MA任务为85.14%，WG任务为79.03%，优于当前最先进的单模态和多模态算法。此外，与基准方法相比，STA-Net在任务早期阶段表现出更小的性能下降。EEG与fNIRS之间的时空对齐提升了混合BCI的性能，并促进了EEG-fNIRS信号的解码。STA-Net有望为EEG-fNIRS BCI建立新的骨干网络。代码可在https://github.com/MutianLiu-SHU/STA-Net获取。
 
-### 📚 训练数据集  
-- **模态**：同步采集的 **EEG + fNIRS** 双模态数据。  
-- **任务范式**：三类认知任务：  
-  - Motor Imagery (MI)  
-  - Mental Arithmetic (MA)  
-  - Word Generation (WG)  
-- **被试**：采用 **subject-specific** 设置（即按被试独立训练与测试），未明确总人数，但属典型小样本 BCI 范式（常见 10–20 名健康被试）。  
-- **数据来源**：自建或合作采集（未引用公开数据集，如 BNCI Horizon 2020 或 TUH EEG Corpus），属私有实验数据。
+## 🔍 特征提取项
+### 算法结构
+本文提出了一种端到端的混合模态解码网络 **STA-Net**（Spatial–Temporal Alignment Network），核心架构由两个关键子层构成：
+1. **fNIRS引导的空间对齐（FGSA）层**：首先计算fNIRS信号的空间注意力图，用于识别对任务敏感的脑区；随后利用该注意力图对EEG通道进行加权，实现EEG与fNIRS在空间维度上的精准对齐。
+2. **EEG引导的时间对齐（EGTA）层**：基于交叉注意力机制（cross-attention mechanism）生成时间注意力图，据此重构出与EEG时间同步的fNIRS信号。该设计专门用于解决fNIRS因血流动力学响应固有延迟而导致的时间错位问题。
+完成时空对齐后，网络将融合后的多模态特征输入下游分类器，直接输出运动想象（MI）、心算（MA）和词语生成（WG）三类心理任务的预测结果。
 
-### 📈 训练结果表现  
-- **分类准确率（subject-specific, 平均值）**：  
-  - Motor Imagery (MI)：**69.65%**  
-  - Mental Arithmetic (MA)：**85.14%**  
-  - Word Generation (WG)：**79.03%**  
-- **对比优势**：  
-  - 显著优于当前最优 **单模态（EEG-only / fNIRS-only）** 及 **主流多模态融合方法**（如早期特征拼接、CCA、MLP、CNN-LSTM 等基线）。  
-  - 在任务**起始阶段（early stage）性能下降更少**，验证其对 fNIRS 延迟问题的有效缓解能力。  
-- **核心指标**：以**平均分类准确率**为主要评估指标（符合 BCI 领域惯例）；未报告 Kappa、F1-score 或置信区间，但强调统计显著性（“superior to SOTA”）。
+### 训练数据集
+（注：基于提供的摘要与引言片段，具体数据集名称、受试者数量及采集硬件参数未详细展开。）
+实验采用**受试者特定（subject-specific）**的评估设置。数据涵盖三种典型的脑机接口心理任务：运动想象（MI）、心算（MA）和词语生成（WG）。模型针对个体受试者的数据进行训练与评估，以验证时空对齐策略在个性化解码中的有效性。
 
-### 💡 创新点  
-1. **首提“时空联合对齐”范式**：区别于传统特征级/决策级融合，将 **空间对齐（fNIRS→EEG）** 与 **时间对齐（EEG→fNIRS）** 解耦建模并协同优化。  
-2. **双引导注意力机制**：  
-   - FGSA：利用 fNIRS 的高空间分辨率**指导 EEG 通道选择与加权**，提升空间特异性；  
-   - EGTA：首创将 **cross-attention 应用于 EEG→fNIRS 时序校准**，显式建模跨模态时序依赖，解决血流动力学延迟瓶颈。  
-3. **端到端可学习对齐**：所有对齐参数（注意力权重）通过反向传播联合优化，避免手工设计对齐规则或预处理（如 GLM 建模）。  
-4. **面向实用 BCI 的轻量化设计**：聚焦可穿戴场景（EEG+fNIRS），不依赖 fMRI/MEG 等不可移动设备，推动混合 BCI 落地。
+### 训练结果表现
+在受试者特定评估中，STA-Net展现出卓越的分类性能与鲁棒性：
+- 运动想象（MI）任务平均准确率：69.65%
+- 心算（MA）任务平均准确率：85.14%
+- 词语生成（WG）任务平均准确率：79.03%
+上述结果均显著优于当前最先进的单模态与多模态基线算法。此外，对比基准方法，STA-Net在任务启动初期表现出更小的性能衰减，证明其时空对齐机制有效提升了模型在动态解码过程中的稳定性。
 
-### ⚠️ 局限性  
-1. **被试泛化性未验证**：仅报告 subject-specific 结果，**缺乏 subject-independent（跨被试）泛化能力评估**，实际部署需重训练。  
-2. **生理机制可解释性有限**：虽引入注意力图，但 FGSA/EGTA 的神经生理对应性（如是否真实反映脑区激活/神经血管耦合）缺乏 fMRI 或电生理验证。  
-3. **计算开销未量化**：未报告模型参数量、推理延迟或硬件资源消耗，影响嵌入式/实时 BCI 应用评估。  
-4. **任务覆盖窄**：仅验证三类认知任务，未拓展至连续解码（如运动轨迹）、情绪识别或临床场景（如卒中康复）。  
-5. **fNIRS 延迟建模简化**：EGTA 以数据驱动方式拟合时序对齐，但未显式整合已知的 HRF（hemodynamic response function）先验。
+### 创新点
+1. **端到端时空精准对齐框架**：摒弃了传统依赖人工设定固定时间偏移量或浅层特征拼接的融合范式，提出端到端的STA-Net，自适应学习EEG与fNIRS之间的时空映射关系。
+2. **双向模态引导机制**：创新性设计了FGSA（fNIRS指导EEG空间加权）与EGTA（EEG指导fNIRS时间重构）双路径，从生理信号特性出发，分别补偿EEG的空间模糊性与fNIRS的时间延迟性。
+3. **提升早期任务解码稳定性**：有效缓解了混合BCI因模态响应不同步导致的任务初期性能骤降问题，为实时、高可靠性的混合脑机交互提供了新的骨干网络架构。
 
-### 📖 参考文献  
-> 注：原文参考文献列表未在提供的文本中完整呈现（仅显示引文标记如 [1]–[13] 及部分条目）。根据正文引用及领域常识，关键参考文献应包括：  
-> - [1] Wolpaw et al., *Brain–computer interfaces for communication and control*, Clinical Neurophysiology, 2002.  
-> - [2–3] 经典 EEG 范式研究（e.g., MI-BCI, P300 speller）  
-> - [4–5] fNIRS-BCI 先驱工作（e.g., Naseer & Hong, *fNIRS-based BCI*, Front. Hum. Neurosci., 2015）  
-> - [10–13] EEG/fNIRS 生理基础与技术局限综述（e.g., Strangman et al., *A quantitative comparison of simultaneous BOLD fMRI and NIRS recordings*, NeuroImage, 2002；Scholkmann et al., *A review on continuous wave functional near-infrared spectroscopy*, JBO, 2014）  
-> - **未提供完整参考文献列表**，需查阅原文 PDF 第 12–13 页获取全部 30+ 条文献。
-```
+### 局限性
+提供的正文片段（摘要及引言部分）中未明确阐述该方法的局限性。根据常规学术论文结构，局限性通常在“讨论（Discussion）”或“结论（Conclusion）”部分详细说明。基于现有内容推测，可能潜在的局限包括：主要采用受试者特定（subject-specific）设置，跨受试者（cross-subject）泛化能力有待进一步验证；交叉注意力与空间对齐模块可能引入额外的计算开销；以及对极端运动伪影或强环境噪声的鲁棒性需更多实测数据支撑。
+
+#
 
 ---
-## 📚 参考文献 (References)
-References
-[1] R.A. Ramadan, A.V. Vasilakos, Brain computer interface: control signals review,
-Neurocomputing 223 (2017) 26–44.
-[2] Y. Song, Q. Zheng, B. Liu, X. Gao, EEG conformer: Convolutional transformer
-for EEG decoding and visualization, IEEE Trans. Neural Syst. Rehabil. Eng. 31
-(2022) 710–719.
-[3] Z. Miao, M. Zhao, X. Zhang, D. Ming, LMDA-Net: A lightweight multi-
-dimensional attention network for general EEG-based brain-computer interfaces
-and interpretability, NeuroImage 276 (2023) 120209.
-[4] Z. Wang, J. Fang, J. Zhang, Rethinking delayed hemodynamic responses for
-fNIRS classification, IEEE Trans. Neural Syst. Rehabil. Eng. (2023).
-[5] Z. Wang, J. Zhang, X. Zhang, P. Chen, B. Wang, Transformer model for functional
-near-infrared spectroscopy classification, IEEE J. Biomed. Heal. Inform. 26 (6)
-(2022) 2559–2569.
-[6] B. Du, X. Cheng, Y. Duan, H. Ning, fMRI brain decoding and its applications in
-brain–computer interface: A survey, Brain Sci. 12 (2) (2022) 228.
-[7] M. Fleury, P. Figueiredo, A. Vourvopoulos, A. Lécuyer, Two is better? Combining
-EEG and fMRI for BCI and neurofeedback: A systematic review, J. Neural Eng.
-(2023).
-Information Fusion 119 (2025) 103023 
-13 
-M. Liu et al.
-[8] X. Li, J. Chen, N. Shi, C. Yang, P. Gao, X. Chen, Y. Wang, S. Gao, X. Gao, A
-hybrid steady-state visual evoked response-based brain-computer interface with
-MEG and EEG, Expert Syst. Appl. 223 (2023) 119736.
-[9] M. Sarma, C. Bond, S. Nara, H. Raza, MEGNet: A MEG-based deep learning
-model for cognitive and motor imagery classification, in: 2023 IEEE Interna-
-tional Conference on Bioinformatics and Biomedicine, BIBM, IEEE, 2023, pp.
-2571–2578.
-[10] S. Vaid, P. Singh, C. Kaur, EEG signal analysis for BCI interface: A re-
-view, in: 2015 Fifth International Conference on Advanced Computing and
-Communication Technologies, IEEE, 2015, pp. 143–147.
-[11] N. Naseer, K.-S. Hong, fNIRS-based brain-computer interfaces: a review, Front.
-Hum. Neurosci. 9 (2015) 3.
-[12] J. Minguillon, M.A. Lopez-Gordo, F. Pelayo, Trends in EEG-BCI for daily-life:
-Requirements for artifact removal, Biomed. Signal Process. Control. 31 (2017)
-407–418.
-[13] S. Ahn, S.C. Jun, Multi-modal integration of EEG-fNIRS for brain-computer
-interfaces–current limitations and future directions, Front. Hum. Neurosci. 11
-(2017) 503.
-[14] Z. He, Z. Li, F. Yang, L. Wang, J. Li, C. Zhou, J. Pan, Advances in multimodal
-emotion recognition based on brain–computer interfaces, Brain Sci. 10 (10)
-(2020) 687.
-[15] M.U. Ali, A. Zafar, K.D. Kallu, H. Masood, M.M.N. Mannan, M.M. Ibrahim, S.
-Kim, M.A. Khan, Correlation-filter-based channel and feature selection framework
-for hybrid EEG-fNIRS BCI applications, IEEE J. Biomed. Heal. Inform. (2023).
-[16] H. Cai, Z. Qu, Z. Li, Y. Zhang, X. Hu, B. Hu, Feature-level fusion approaches
-based on multimodal EEG data for depression recognition, Inf. Fusion 59 (2020)
-127–138.
-[17] Y. Gao, B. Jia, M. Houston, Y. Zhang, Hybrid EEG-fNIRS brain computer interface
-based on common spatial pattern by using EEG-informed general linear model,
-IEEE Trans. Instrum. Meas. (2023).
-[18] J. Lin, J. Lu, Z. Shu, N. Yu, J. Han, An EEG-fNIRS neurovascular coupling
-analysis method to investigate cognitive-motor interference, Comput. Biol. Med.
-160 (2023) 106968.
-[19] C. Cooney, R. Folli, D. Coyle, A bimodal deep learning architecture for EEG-fNIRS
-decoding of overt and imagined speech, IEEE Trans. Biomed. Eng. 69 (6) (2021)
-1983–1994.
-[20] A. Arif, Y. Wang, R. Yin, X. Zhang, A. Helmy, EF-Net: Mental state recognition
-by analyzing multimodal EEG-fNIRS via CNN, Sensors 24 (6) (2024) 1889.
-[21] Q. He, L. Feng, G. Jiang, P. Xie, Multimodal multitask neural network for motor
-imagery classification with EEG and fNIRS signals, IEEE Sens. J. 22 (21) (2022)
-20695–20706.
-[22] L. Qiu, W. Feng, Z. Ying, J. Pan, EFMLNet: Fusion model based on end-to-
-end mutual information learning for hybrid EEG-fNIRS brain-computer interface
-applications, in: Proceedings of the Annual Meeting of the Cognitive Science
-Society, Vol. 46, 2024.
-[23] Y. Dai, Z. Yan, J. Cheng, X. Duan, G. Wang, Analysis of multimodal data fusion
-from an information theory perspective, Inform. Sci. 623 (2023) 164–183.
-[24] M.H.R. Rabbani, S.M.R. Islam, Multimodal decision fusion of eeg and fnirs
-signals, in: 2021 5th International Conference on Electrical Engineering and
-Information Communication Technology, ICEEICT, IEEE, 2021, pp. 1–6.
-[25] Y. Kwak, W.-J. Song, S.-E. Kim, FGANet: fNIRS-guided attention network for
-hybrid EEG-fNIRS brain-computer interfaces, IEEE Trans. Neural Syst. Rehabil.
-Eng. 30 (2022) 329–339.
-[26] X. Jiang, X. Gu, K. Xu, H. Ren, W. Chen, Independent decision path fusion
-for bimodal asynchronous brain–computer interface to discriminate multiclass
-mental states, IEEE Access 7 (2019) 165303–165317.
-[27] M.H.R. Rabbani, S.M.R. Islam, Deep learning networks based decision fusion
-model of EEG and fNIRS for classification of cognitive tasks, Cogn. Neurodyn.
-18 (4) (2024) 1489–1506.
-[28] Z. Wang, L. Yang, Y. Zhou, L. Chen, B. Gu, S. Liu, M. Xu, F. He, D. Ming,
-Incorporating EEG and fNIRS patterns to evaluate cortical excitability and MI-
-BCI performance during motor training, IEEE Trans. Neural Syst. Rehabil. Eng.
-31 (2023) 2872–2882.
-[29] M.H.R. Rabbani, S.M.R. Islam, Deep learning networks based decision fusion
-model of EEG and fNIRS for classification of cognitive tasks, Cogn. Neurodyn.
-(2023) 1–18.
-[30] J. Shin, A. von Lühmann, B. Blankertz, D.-W. Kim, J. Jeong, H.-J. Hwang, K.-R.
-Müller, Open access dataset for EEG+ NIRS single-trial classification, IEEE Trans.
-Neural Syst. Rehabil. Eng. 25 (10) (2016) 1735–1745.
-[31] C. Zhang, H. Yang, C.-C. Fan, S. Chen, C. Fan, Z.-G. Hou, J. Chen, L. Peng,
-K. Xiang, Y. Wu, et al., Comparing multi-dimensional fNIRS features using
-bayesian optimization-based neural networks for mild cognitive impairment
-(MCI) detection, IEEE Trans. Neural Syst. Rehabil. Eng. 31 (2023) 1019–1029.
-[32] Z. Chen, C. Gao, T. Li, X. Ji, S. Liu, M. Xiao, Open access dataset integrating
-EEG and fNIRS during stroop tasks, Sci. Data 10 (1) (2023) 618.
-[33] L. Katus, A. Blasi, S. McCann, L. Mason, E. Mbye, E. Touray, M. Ceesay, M.
-de Haan, S.E. Moore, C.E. Elwell, et al., Longitudinal fNIRS and EEG metrics
-of habituation and novelty detection are correlated in 1–18-month-old infants,
-NeuroImage 274 (2023) 120153.
-[34] J. Shin, A. Von Lühmann, D.-W. Kim, J. Mehnert, H.-J. Hwang, K.-R. Müller,
-Simultaneous acquisition of EEG and NIRS during cognitive tasks for an open
-access dataset, Sci. Data 5 (1) (2018) 1–16.
-[35] S.M. Hosni, S.B. Borgheai, J. Mclinden, Y. Shahriari, An fNIRS-based motor
-imagery BCI for ALS: A subject-specific data-driven approach, IEEE Trans. Neural
-Syst. Rehabil. Eng. 28 (12) (2020) 3063–3073.
-[36] T.-W. Lee, M. Girolami, T.J. Sejnowski, Independent component analysis using an
-extended infomax algorithm for mixed subgaussian and supergaussian sources,
-Neural Comput. 11 (2) (1999) 417–441.
-[37] W.B. Baker, A.B. Parthasarathy, D.R. Busch, R.C. Mesquita, J.H. Greenberg, A.
-Yodh, Modified Beer-Lambert law for blood flow, Biomed. Opt. Express 5 (11)
-(2014) 4053–4075.
-[38] I.W. Selesnick, C.S. Burrus, Generalized digital Butterworth filter design, IEEE
-Trans. Signal Process. 46 (6) (1998) 1688–1694.
-[39] Z. Sun, Z. Huang, F. Duan, Y. Liu, A novel multimodal approach for hybrid
-brain–computer interface, IEEE Access 8 (2020) 89909–89918.
-[40] Y. Kwak, K. Kong, W.-J. Song, B.-K. Min, S.-E. Kim, Multilevel feature fusion
-with 3d convolutional neural network for eeg-based workload estimation, IEEE
-Access 8 (2020) 16009–16021.
-[41] S. McKinley, M. Levine, Cubic spline interpolation, Coll. Redwoods 45 (1) (1998)
-1049–1060.
-[42] D. Tran, L. Bourdev, R. Fergus, L. Torresani, M. Paluri, Learning spatiotem-
-poral features with 3d convolutional networks, in: Proceedings of the IEEE
-International Conference on Computer Vision, 2015, pp. 4489–4497.
-[43] S. Ji, W. Xu, M. Yang, K. Yu, 3D convolutional neural networks for human action
-recognition, IEEE Trans. Pattern Anal. Mach. Intell. 35 (1) (2012) 221–231.
-[44] X. Zhao, H. Zhang, G. Zhu, F. You, S. Kuang, L. Sun, A multi-branch 3D
-convolutional neural network for EEG-based motor imagery classification, IEEE
-Trans. Neural Syst. Rehabil. Eng. 27 (10) (2019) 2164–2177.
-[45] S. Ioffe, C. Szegedy, Batch normalization: Accelerating deep network training
-by reducing internal covariate shift, in: International Conference on Machine
-Learning, pmlr, 2015, pp. 448–456.
-[46] D.-A. Clevert, T. Unterthiner, S. Hochreiter, Fast and accurate deep network
-learning by exponential linear units (elus), 2015, arXiv preprint arXiv:1511.
-07289.
-[47] N. Srivastava, G. Hinton, A. Krizhevsky, I. Sutskever, R. Salakhutdinov, Dropout:
-a simple way to prevent neural networks from overfitting, J. Mach. Learn. Res.
-15 (1) (2014) 1929–1958.
-[48] K. He, X. Zhang, S. Ren, J. Sun, Delving deep into rectifiers: Surpassing
-human-level performance on imagenet classification, in: Proceedings of the IEEE
-International Conference on Computer Vision, 2015, pp. 1026–1034.
-[49] A. Vaswani, N. Shazeer, N. Parmar, J. Uszkoreit, L. Jones, A.N. Gomez, Ł. Kaiser,
-I. Polosukhin, Attention is all you need, Adv. Neural Inf. Process. Syst. 30 (2017).
-[50] Y. Li, X. Zhang, D. Ming, Early-stage fusion of EEG and fNIRS improves
-classification of motor imagery, Front. Neurosci. 16 (2023) 1062889.
-[51] B. Yu, L. Cao, J. Jia, C. Fan, Y. Dong, C. Zhu, E-FNet: A EEG-fNIRS dual-
-stream model for Brain–Computer Interfaces, Biomed. Signal Process. Control.
-100 (2025) 106943.
-[52] R. Mane, E. Chew, K. Chua, K.K. Ang, N. Robinson, A.P. Vinod, S.-W. Lee, C.
-Guan, FBCNet: A multi-view convolutional neural network for brain-computer
-interface, 2021, arXiv preprint arXiv:2104.01233.
-[53] R.T. Schirrmeister, J.T. Springenberg, L.D.J. Fiederer, M. Glasstetter, K.
-Eggensperger, M. Tangermann, F. Hutter, W. Burgard, T. Ball, Deep learning
-with convolutional neural networks for EEG decoding and visualization, Hum.
-Brain Mapp. 38 (11) (2017) 5391–5420.
-[54] D.P. Kingma, J. Ba, Adam: A method for stochastic optimization, 2014, CoRR
-1412.6980.
-[55] L. Van der Maaten, G. Hinton, Visualizing data using t-SNE, J. Mach. Learn. Res.
-9 (11) (2008).
-[56] G. Sammer, C. Blecker, H. Gebhardt, M. Bischoff, R. Stark, K. Morgen, D.
-Vaitl, Relationship between regional hemodynamic activity and simultaneously
-recorded EEG-theta associated with mental arithmetic-induced workload, Hum.
-Brain Mapp. 28 (8) (2007) 793–803.
-[57] L. Brinkman, A. Stolk, H.C. Dijkerman, F.P. de Lange, I. Toni, Distinct roles
-for alpha-and beta-band oscillations during mental simulation of goal-directed
-actions, J. Neurosci. 34 (44) (2014) 14783–14792.
-Information Fusion 119 (2025) 103023 
-14
+## 🖼️ 文献核心图表与视觉特征
+
+### 图表 (提取自第 3 页)
+![文献插图](http://localhost:8000/api/wiki/images/STA-Net_p3_3.jpeg)
+
+**🤖 上下文视觉解析：**
+这张图片展示了两种不同数据集（dataset-A 和 dataset-B）中 EEG 电极的放置位置。左侧图（a）显示了 dataset-A 中 EEG 电极（蓝色和黑色圆圈）、fNIRS 光源（红色方块）和探测器（绿色方块）的布局，其中黑色实线表示 fNIRS 通道。右侧图（b）则展示了 dataset-B 中 EEG 电极（黄色圆圈）和 fNIRS 通道（红色圆圈）的分布。通过对比两张图，可以清晰地看到两种数据集中 EEG 电极的具体位置及其在头皮上的排列方式，为后续的脑成像数据分析提供了基础。
+
+### 图表 (提取自第 5 页)
+![文献插图](http://localhost:8000/api/wiki/images/STA-Net_p5_6.jpeg)
+
+**🤖 上下文视觉解析：**
+这张图展示了EGTA层的结构，具体描述了其输入特征的处理流程。输入包括从3D提取器中获得的fNIRS序列特征和融合特征。对于fNIRS序列特征，每个特征段被展平，并通过添加位置编码来确定其在EEG中的相对位置，从而生成fNIRS令牌。位置编码是一个可训练参数，初始化为He均匀分布，大小为(𝑙, 512)。融合特征由于EEG位置作为时间锚点，无需位置编码，直接展平后线性投影到d维，得到最终的空间对齐融合特征。与融合分支类似，EEG特征也被直接展平以获得扁平化的EEG特征。该图清晰地展示了这些特征如何在EGTA层中进行处理和转换，以实现EEG和fNIRS信号的时间同步，从而捕捉神经活动引起的血流动力学变化，提升EEG-fNIRS混合脑机接口系统的性能。
+
+### 图表 (提取自第 8 页)
+![文献插图](http://localhost:8000/api/wiki/images/STA-Net_p8_7.jpeg)
+
+**🤖 上下文视觉解析：**
+这张图片展示了多模态信号（EEG + fNIRS）与单模态信号（EEG 和 fNIRS）在三个任务（MI、MA、WG）中的预测结果对比散点图。每个子图分别表示不同信号组合的预测值与实际值之间的关系，其中对角线代表完全匹配的情况。从图中可以看出，多模态信号（EEG + fNIRS）的预测结果更接近对角线，表明其预测精度更高，尤其是在MI和WG任务中，多模态信号的表现优于单模态信号。这进一步支持了论文中关于多模态信号在分类任务中具有更高贡献度的结论。
+
+### 图表 (提取自第 9 页)
+![文献插图](http://localhost:8000/api/wiki/images/STA-Net_p9_8.jpeg)
+
+**🤖 上下文视觉解析：**
+这张图片是论文中的图12，展示了在三种任务（MI、MA、WG）中，去除FGSA层和EGTA层后，每个个体的分类准确率变化情况。横轴表示去除特定层后的准确率，纵轴表示原始STA-Net模型的准确率。散点图显示了每个个体的准确率对比，蓝色虚线为理想情况下的对角线。从图中可以看出，去除FGSA层对整体准确率影响较小，而去除EGTA层则导致显著的准确率下降，尤其是在WG任务中，去除EGTA层后准确率下降了5.49%，且具有统计学意义（p < 0.001）。这表明EGTA层在提升模型性能方面具有重要作用，尤其是对于WG任务。
+
+### 图表 (提取自第 10 页)
+![文献插图](http://localhost:8000/api/wiki/images/STA-Net_p10_9.jpeg)
+
+**🤖 上下文视觉解析：**
+这张图展示了数据集A中Subject S25和数据集B中Subject S22的特征分布，通过t-SNE降维可视化。图中的黄色和紫色点分别代表不同类别的特征，清晰地显示了EGTA层在增强fNRIS特征的可分性方面具有显著效果，即不同类别特征在降维空间中分离得更加明显，从而提升了模型的分类性能。
+
+### 图表 (提取自第 10 页)
+![文献插图](http://localhost:8000/api/wiki/images/STA-Net_p10_10.jpeg)
+
+**🤖 上下文视觉解析：**
+这张图片展示了MI任务、MA任务和WG任务在第一阶段训练中的平均训练和验证损失曲线，分别对应图15的(a)、(b)和(c)部分。每项任务的训练和验证损失曲线均以不同颜色表示，包括总损失（L）、分类损失（Lclass）、特征一致性损失（Leg）、特征对齐损失（Legta）和特征相似性损失（Lgsa）。从图中可以看出，随着训练轮次的增加，各项损失值逐渐趋于稳定，表明模型在训练过程中逐步收敛。特别是总损失（L）在各个任务中均表现出较好的下降趋势，说明模型在优化过程中能够有效降低整体误差。这些结果进一步验证了论文中提出的损失函数设计的有效性，尤其是在提升特征区分度和模型性能方面的贡献。
+
+### 图表 (提取自第 11 页)
+![文献插图](http://localhost:8000/api/wiki/images/STA-Net_p11_11.jpeg)
+
+**🤖 上下文视觉解析：**
+这张图片展示了在三种不同认知任务（MI任务、MA任务和WG任务）中，每个受试者的时间权重分布情况。图中的垂直轴表示受试者编号，水平轴表示fNIRS段索引，颜色深浅代表时间权重的大小，深色表示权重较高且与EEG样本的相关性更强。从图中可以看出，在MI任务中，第四段fNIRS段的权重较高；而在MA任务中，后期fNIRS段的权重较大。这些结果验证了fNIRS延迟在不同认知任务中的变异性，强调了通过EGTA层自适应提取EEG-fNIRS时间相关性的重要性，而非直接依赖固定延迟值。
+

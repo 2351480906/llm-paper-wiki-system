@@ -37,10 +37,13 @@ public class WikiService {
     @Value("${app.ai-engine.save-wiki-url}")
     private String aiSaveWikiUrl;
 
+    @Value("${app.ai-engine.wiki-merge-url}")
+    private String aiWikiMergeUrl;
+
     private final RestTemplate restTemplate = new RestTemplate();
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    // 1. 处理上传
+    // 1. 处理上传（Agentic 架构重构版）
     public String processUploadedPdf(MultipartFile file, List<String> options) throws IOException {
         MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
         body.add("file", new ByteArrayResource(file.getBytes()) {
@@ -57,13 +60,14 @@ public class WikiService {
         try {
             JsonNode root = objectMapper.readTree(response.getBody());
             if ("success".equals(root.get("status").asText())) {
-                String markdownContent = root.get("markdown").asText();
-                return saveToObsidian(file.getOriginalFilename(), markdownContent);
+                // 🌟 核心修改：不再强行寻找 "markdown" 字段，也不再由 Java 保存文件。
+                // 直接把 Python 返回的“后台已开始处理”的 message 透传给前端
+                return "✅ " + root.get("message").asText();
             } else {
                 throw new RuntimeException(root.get("message").asText());
             }
         } catch (Exception e) {
-            throw new RuntimeException("解析失败: " + e.getMessage());
+            throw new RuntimeException("请求Python引擎失败: " + e.getMessage());
         }
     }
 
@@ -85,6 +89,8 @@ public class WikiService {
         }
     }
 
+
+
     // 3. 🌟 新增：反哺 Wiki
     public String saveToWiki(String topic, String content) {
         Map<String, String> requestBody = new HashMap<>();
@@ -105,6 +111,34 @@ public class WikiService {
             }
         } catch (Exception e) {
             return "❌ 保存请求失败: " + e.getMessage();
+        }
+    }
+
+    // 🌟 4. 新增：将前端的对话内容反哺融合到 Wiki
+    public String mergeToWiki(String filename, String question, String answer) {
+        // 1. 打包数据
+        Map<String, String> requestBody = new HashMap<>();
+        requestBody.put("filename", filename);
+        requestBody.put("question", question);
+        requestBody.put("answer", answer);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        HttpEntity<Map<String, String>> requestEntity = new HttpEntity<>(requestBody, headers);
+
+        try {
+            // 2. 发送给 Python 的 /api/ai/wiki/merge 接口
+            ResponseEntity<String> response = restTemplate.postForEntity(aiWikiMergeUrl, requestEntity, String.class);
+            JsonNode root = objectMapper.readTree(response.getBody());
+
+            // 3. 解析 Python 的返回结果
+            if ("success".equals(root.get("status").asText())) {
+                return root.get("message").asText();
+            } else {
+                return "❌ 融合失败: " + root.get("message").asText();
+            }
+        } catch (Exception e) {
+            return "❌ 请求 Python 引擎合并失败: " + e.getMessage();
         }
     }
 
