@@ -4,7 +4,7 @@ import shutil
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SETTINGS_FILE = os.path.join(BASE_DIR, "settings.json")
-QWEN_API_KEY = "sk-21b28f745dee492ab5c8a4de46d9413b" # ⚠️ 记得填回你的 API Key
+QWEN_API_KEY = "your-api-key" # ⚠️ 记得填回你的 API Key
 BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
 # 1. 设置默认配置
